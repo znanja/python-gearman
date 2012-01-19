@@ -8,7 +8,8 @@ import time
 from gearman.errors import ConnectionError, ProtocolError, ServerUnavailable
 from gearman.constants import DEFAULT_GEARMAN_PORT, _DEBUG_MODE_
 from gearman.protocol import GEARMAN_PARAMS_FOR_COMMAND, GEARMAN_COMMAND_TEXT_COMMAND, NULL_CHAR, \
-    get_command_name, pack_binary_command, parse_binary_command, parse_text_command, pack_text_command
+    get_command_name, pack_binary_command, parse_binary_command, parse_text_command, pack_text_command, \
+    binary_command_size
 
 gearman_logger = logging.getLogger(__name__)
 
@@ -157,6 +158,11 @@ class GearmanConnection(object):
 
         self._incoming_buffer.write(recv_buffer)
         return self._incoming_buffer.tell()
+
+    def next_command_size(self):
+        """Return the expected size of the next command in the incoming buffer.
+        """
+        return binary_command_size(self._incoming_buffer.getvalue())
 
     def _unpack_command(self, given_buffer):
         """Conditionally unpack a binary command or a text based server command"""

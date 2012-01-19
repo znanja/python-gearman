@@ -165,6 +165,16 @@ def submit_cmd_for_background_priority(background, priority):
     cmd_type = cmd_type_lookup[lookup_tuple]
     return cmd_type
 
+def binary_command_size(in_buffer):
+    """Return the length of a binary command or None if the command's header is
+    incomplete.
+    """
+    if len(in_buffer) < COMMAND_HEADER_SIZE:
+        return None
+    else:
+        length = struct.unpack('!4sII', in_buffer[:COMMAND_HEADER_SIZE])[2]
+        return length + COMMAND_HEADER_SIZE
+
 def parse_binary_command(in_buffer, is_response=True):
     """Parse data and return (command type, command arguments dict, command size)
     or (None, None, data) if there's not enough data for a complete command.

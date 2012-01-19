@@ -67,6 +67,8 @@ class GearmanConnectionManager(object):
 
         self.handler_initial_state = {}
 
+        self.next_command_size = None
+
     def shutdown(self):
         # Shutdown all our connections one by one
         for gearman_connection in self.connection_list:
@@ -209,13 +211,18 @@ class GearmanConnectionManager(object):
         current_handler = self.connection_to_handler_map[current_connection]
 
         # Transfer data from socket -> buffer
-        current_connection.read_data_from_socket()
+        length = current_connection.read_data_from_socket()
 
-        # Transfer command from buffer -> command queue
-        current_connection.read_commands_from_buffer()
+        if self.next_command_size is None or length >= self.next_command_size:
+            # Transfer command from buffer -> command queue
+            current_connection.read_commands_from_buffer()
 
-        # Notify the handler that we have commands to fetch
-        current_handler.fetch_commands()
+            # Notify the handler that we have commands to fetch
+            current_handler.fetch_commands()
+
+            # Remember how big the next command is so we don't blindly parse
+            # huge amounts of data every read
+            self.next_command_size = current_connection.next_command_size()
 
     def handle_write(self, current_connection):
         # Transfer command from command queue -> buffer
