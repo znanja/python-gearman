@@ -1,6 +1,7 @@
 import collections
 import cStringIO
 import logging
+import os
 import socket
 import struct
 import time
@@ -27,6 +28,9 @@ class GearmanConnection(object):
     """
     connect_cooldown_seconds = 1.0
 
+    # Maximum amount of data sent through socket at one time
+    send_buffer_size = 100000
+
     def __init__(self, host=None, port=DEFAULT_GEARMAN_PORT):
         port = port or DEFAULT_GEARMAN_PORT
         self.gearman_host = host
@@ -47,9 +51,11 @@ class GearmanConnection(object):
         self._is_client_side = None
         self._is_server_side = None
 
-        # Reset all our raw data buffers
+        # Reset all our raw data buffers -- outgoing buffer must store data in
+        # reverse to reduce the amount of manipulations for commands with
+        # a large payload
         self._incoming_buffer = cStringIO.StringIO()
-        self._outgoing_buffer = ''
+        self._outgoing_buffer = cStringIO.StringIO()
 
         # Toss all commands we may have sent or received
         self._incoming_commands = collections.deque()
@@ -68,7 +74,7 @@ class GearmanConnection(object):
 
     def writable(self):
         """Returns True if we have data to write"""
-        return self.connected and bool(self._outgoing_commands or self._outgoing_buffer)
+        return self.connected and bool(self._outgoing_commands or self._outgoing_buffer.tell())
 
     def readable(self):
         """Returns True if we might have data to read"""
@@ -193,13 +199,18 @@ class GearmanConnection(object):
         if not self._outgoing_commands:
             return
 
-        packed_data = [self._outgoing_buffer]
+        # Need to add commands to front of buffer but StringIO doesn't provide
+        # a way to do so.  Unreverse the buffer, then append the command, then
+        # reverse the buffer again.
+        out_buffer = self._outgoing_buffer.getvalue()[::-1]
+
         while self._outgoing_commands:
             cmd_type, cmd_args = self._outgoing_commands.popleft()
             packed_command = self._pack_command(cmd_type, cmd_args)
-            packed_data.append(packed_command)
+            out_buffer += packed_command
 
-        self._outgoing_buffer = ''.join(packed_data)
+        self._outgoing_buffer = cStringIO.StringIO()
+        self._outgoing_buffer.write(out_buffer[::-1])
 
     def send_data_to_socket(self):
         """Send data from buffer -> socket
@@ -209,19 +220,25 @@ class GearmanConnection(object):
         if not self.connected:
             self.throw_exception(message='disconnected')
 
-        if not self._outgoing_buffer:
+        if not self._outgoing_buffer.tell():
             return 0
 
+        self._outgoing_buffer.seek(-self.send_buffer_size, os.SEEK_END)
+        output = self._outgoing_buffer.read()[::-1]
+
         try:
-            bytes_sent = self.gearman_socket.send(self._outgoing_buffer)
+            bytes_sent = self.gearman_socket.send(output)
         except socket.error, socket_exception:
             self.throw_exception(exception=socket_exception)
 
         if bytes_sent == 0:
             self.throw_exception(message='remote disconnected')
 
-        self._outgoing_buffer = self._outgoing_buffer[bytes_sent:]
-        return len(self._outgoing_buffer)
+        # Pop bytes sent off of buffer
+        new_size = self._outgoing_buffer.tell() - bytes_sent
+        self._outgoing_buffer.truncate(new_size)
+
+        return new_size
 
     def _pack_command(self, cmd_type, cmd_args):
         """Converts a command to its raw binary format"""
