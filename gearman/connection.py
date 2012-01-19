@@ -130,8 +130,8 @@ class GearmanConnection(object):
         """Reads data from buffer --> command_queue"""
         received_commands = 0
         while True:
-            cmd_type, cmd_args, cmd_len = self._unpack_command(
-                self._incoming_buffer.getvalue())
+            incoming = self._incoming_buffer.getvalue()
+            cmd_type, cmd_args, cmd_len = self._unpack_command(incoming)
 
             if not cmd_len:
                 break
@@ -142,7 +142,8 @@ class GearmanConnection(object):
             # Move the self._incoming_buffer forward by the number of bytes we just read
             self._incoming_commands.append((cmd_type, cmd_args))
 
-            substr = self._incoming_buffer.getvalue()[cmd_len:]
+            substr = incoming[cmd_len:]
+            self._incoming_buffer.close()
             self._incoming_buffer = cStringIO.StringIO()
             self._incoming_buffer.write(substr)
 
