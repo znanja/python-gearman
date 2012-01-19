@@ -1,4 +1,5 @@
 import collections
+import cStringIO
 import logging
 import socket
 import struct
@@ -46,7 +47,7 @@ class GearmanConnection(object):
         self._is_server_side = None
 
         # Reset all our raw data buffers
-        self._incoming_buffer = ''
+        self._incoming_buffer = cStringIO.StringIO()
         self._outgoing_buffer = ''
 
         # Toss all commands we may have sent or received
@@ -122,7 +123,9 @@ class GearmanConnection(object):
         """Reads data from buffer --> command_queue"""
         received_commands = 0
         while True:
-            cmd_type, cmd_args, cmd_len = self._unpack_command(self._incoming_buffer)
+            cmd_type, cmd_args, cmd_len = self._unpack_command(
+                self._incoming_buffer.getvalue())
+
             if not cmd_len:
                 break
 
@@ -131,7 +134,10 @@ class GearmanConnection(object):
             # Store our command on the command queue
             # Move the self._incoming_buffer forward by the number of bytes we just read
             self._incoming_commands.append((cmd_type, cmd_args))
-            self._incoming_buffer = self._incoming_buffer[cmd_len:]
+
+            substr = self._incoming_buffer.getvalue()[cmd_len:]
+            self._incoming_buffer = cStringIO.StringIO()
+            self._incoming_buffer.write(substr)
 
         return received_commands
 
@@ -149,8 +155,8 @@ class GearmanConnection(object):
         if len(recv_buffer) == 0:
             self.throw_exception(message='remote disconnected')
 
-        self._incoming_buffer += recv_buffer
-        return len(self._incoming_buffer)
+        self._incoming_buffer.write(recv_buffer)
+        return self._incoming_buffer.tell()
 
     def _unpack_command(self, given_buffer):
         """Conditionally unpack a binary command or a text based server command"""
