@@ -247,10 +247,10 @@ class GearmanWorker(GearmanConnectionManager):
             self.command_handler_holding_job_lock = None
 
         return True
-    
+
     def has_job_lock(self):
         return bool(self.command_handler_holding_job_lock is not None)
-    
+
     def check_job_lock(self, command_handler):
         """Check to see if we hold the job lock"""
         return bool(self.command_handler_holding_job_lock == command_handler)
