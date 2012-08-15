@@ -1,7 +1,7 @@
 import struct
 from gearman.constants import PRIORITY_NONE, PRIORITY_LOW, PRIORITY_HIGH
 from gearman.errors import ProtocolError
-from gearman import compat
+
 # Protocol specific constants
 NULL_CHAR = b'\x00'
 MAGIC_RES_STRING = NULL_CHAR + b'RES'
@@ -248,7 +248,7 @@ def pack_binary_command(cmd_type, cmd_args, is_response=False):
 
     # The binary protocol is null byte delimited, so let's make sure we don't
     # have null bytes in our values and we're dealing with strings we can probably encode.
-    if compat.any(not isinstance(param_value, bytes) or NULL_CHAR in param_value for param_value in cmd_args.values()):
+    if any(not isinstance(param_value, bytes) or NULL_CHAR in param_value for param_value in cmd_args.values()):
         raise ProtocolError('Received un-encodable arguments: %r' % cmd_args)
 
     data_items = [cmd_args[param] for param in expected_cmd_params]
