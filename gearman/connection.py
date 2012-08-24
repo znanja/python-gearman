@@ -178,7 +178,7 @@ class GearmanConnection(object):
             cmd_type = None
             cmd_args = None
             cmd_len = 0
-        elif given_buffer[0] == NULL_CHAR:
+        elif given_buffer[0] == 0:
             # We'll be expecting a response if we know we're a client side command
             is_response = bool(self._is_client_side)
             cmd_type, cmd_args, cmd_len = parse_binary_command(given_buffer, is_response=is_response)
@@ -237,6 +237,7 @@ class GearmanConnection(object):
         # Pop bytes sent off of buffer
         new_size = self._outgoing_buffer.tell() - bytes_sent
         self._outgoing_buffer.truncate(new_size)
+        self._outgoing_buffer.seek(new_size)
 
         return new_size
 
