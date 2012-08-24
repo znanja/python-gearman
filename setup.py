@@ -6,7 +6,7 @@ from gearman import __version__ as version
 
 setup(
     name = 'gearman',
-    version = version,
+    version = version + '-znanja1',
     author = 'Matthew Tai',
     author_email = 'mtai@yelp.com',
     description = 'Gearman API - Client, worker, and admin client interfaces',
