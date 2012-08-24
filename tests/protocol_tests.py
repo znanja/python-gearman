@@ -14,12 +14,12 @@ class ProtocolBinaryCommandsTest(unittest.TestCase):
     # Begin parsing tests #
     #######################
     def test_parsing_errors(self):
-        malformed_command_buffer = "%sAAAABBBBCCCC"
+        malformed_command_buffer = b"AAAABBBBCCCC"
 
         # Raise malformed magic exceptions
-        self.assertRaises(ProtocolError, protocol.parse_binary_command, malformed_command_buffer % "DDDD")
-        self.assertRaises(ProtocolError, protocol.parse_binary_command, malformed_command_buffer % protocol.MAGIC_RES_STRING, is_response=False)
-        self.assertRaises(ProtocolError, protocol.parse_binary_command, malformed_command_buffer % protocol.MAGIC_REQ_STRING, is_response=True)
+        self.assertRaises(ProtocolError, protocol.parse_binary_command, b"DDDD" + malformed_command_buffer)
+        self.assertRaises(ProtocolError, protocol.parse_binary_command, protocol.MAGIC_RES_STRING + malformed_command_buffer, is_response=False)
+        self.assertRaises(ProtocolError, protocol.parse_binary_command, protocol.MAGIC_REQ_STRING + malformed_command_buffer, is_response=True)
 
         # Raise unknown command errors
         unassigned_gearman_command = 1234
@@ -27,11 +27,11 @@ class ProtocolBinaryCommandsTest(unittest.TestCase):
         self.assertRaises(ProtocolError, protocol.parse_binary_command, unknown_command_buffer)
 
         # Raise an error on our imaginary GEARMAN_COMMAND_TEXT_COMMAND
-        imaginary_command_buffer = struct.pack('!4sII4s', protocol.MAGIC_RES_STRING, protocol.GEARMAN_COMMAND_TEXT_COMMAND, 4, 'ABCD')
+        imaginary_command_buffer = struct.pack('!4sII4s', protocol.MAGIC_RES_STRING, protocol.GEARMAN_COMMAND_TEXT_COMMAND, 4, b'ABCD')
         self.assertRaises(ProtocolError, protocol.parse_binary_command, imaginary_command_buffer)
 
         # Raise an error on receiving an unexpected payload
-        unexpected_payload_command_buffer = struct.pack('!4sII4s', protocol.MAGIC_RES_STRING, protocol.GEARMAN_COMMAND_NOOP, 4, 'ABCD')
+        unexpected_payload_command_buffer = struct.pack('!4sII4s', protocol.MAGIC_RES_STRING, protocol.GEARMAN_COMMAND_NOOP, 4, b'ABCD')
         self.assertRaises(ProtocolError, protocol.parse_binary_command, unexpected_payload_command_buffer)
 
     def test_parsing_request(self):
@@ -65,7 +65,7 @@ class ProtocolBinaryCommandsTest(unittest.TestCase):
         self.assertEquals(cmd_len, len(noop_command_buffer))
 
     def test_parsing_single_arg(self):
-        echoed_string = 'abcd'
+        echoed_string = b'abcd'
         echo_command_buffer = struct.pack('!4sII4s', protocol.MAGIC_RES_STRING, protocol.GEARMAN_COMMAND_ECHO_RES, 4, echoed_string)
         cmd_type, cmd_args, cmd_len = protocol.parse_binary_command(echo_command_buffer)
         self.assertEquals(cmd_type, protocol.GEARMAN_COMMAND_ECHO_RES)
@@ -73,7 +73,7 @@ class ProtocolBinaryCommandsTest(unittest.TestCase):
         self.assertEquals(cmd_len, len(echo_command_buffer))
 
     def test_parsing_single_arg_with_extra_data(self):
-        echoed_string = 'abcd'
+        echoed_string = b'abcd'
         excess_bytes = 5
         excess_data = echoed_string + (protocol.NULL_CHAR * excess_bytes)
         excess_echo_command_buffer = struct.pack('!4sII9s', protocol.MAGIC_RES_STRING, protocol.GEARMAN_COMMAND_ECHO_RES, 4, excess_data)
@@ -85,13 +85,13 @@ class ProtocolBinaryCommandsTest(unittest.TestCase):
     def test_parsing_multiple_args(self):
         # Tests ordered argument processing and proper NULL_CHAR splitting
         expected_data = protocol.NULL_CHAR * 4
-        binary_payload = protocol.NULL_CHAR.join(['test', 'function', 'identifier', expected_data])
+        binary_payload = protocol.NULL_CHAR.join([b'test', b'function', b'identifier', expected_data])
         payload_size = len(binary_payload)
 
         uniq_command_buffer = struct.pack('!4sII%ds' % payload_size, protocol.MAGIC_RES_STRING, protocol.GEARMAN_COMMAND_JOB_ASSIGN_UNIQ, payload_size, binary_payload)
         cmd_type, cmd_args, cmd_len = protocol.parse_binary_command(uniq_command_buffer)
         self.assertEquals(cmd_type, protocol.GEARMAN_COMMAND_JOB_ASSIGN_UNIQ)
-        self.assertEquals(cmd_args, dict(job_handle='test', task='function', unique='identifier', data=expected_data))
+        self.assertEquals(cmd_args, dict(job_handle=b'test', task=b'function', unique=b'identifier', data=expected_data))
         self.assertEquals(cmd_len, len(uniq_command_buffer))
 
     #######################
@@ -110,7 +110,7 @@ class ProtocolBinaryCommandsTest(unittest.TestCase):
 
         # Assert we get arg mismatch, got 1, expecting 0
         cmd_type = protocol.GEARMAN_COMMAND_GRAB_JOB
-        cmd_args = dict(extra='arguments')
+        cmd_args = dict(extra=b'arguments')
         self.assertRaises(ProtocolError, protocol.pack_binary_command, cmd_type, cmd_args)
 
         # Assert we get arg mismatch, got 0, expecting 1
@@ -120,17 +120,17 @@ class ProtocolBinaryCommandsTest(unittest.TestCase):
 
         # Assert we get arg mismatch (name), got 1, expecting 1
         cmd_type = protocol.GEARMAN_COMMAND_JOB_CREATED
-        cmd_args = dict(extra='arguments')
+        cmd_args = dict(extra=b'arguments')
         self.assertRaises(ProtocolError, protocol.pack_binary_command, cmd_type, cmd_args)
 
-        # Assert we get a non-string argument
+        # Assert we get a non-bytes argument
         cmd_type = protocol.GEARMAN_COMMAND_JOB_CREATED
         cmd_args = dict(job_handle=12345)
         self.assertRaises(ProtocolError, protocol.pack_binary_command, cmd_type, cmd_args)
 
-        # Assert we get a non-string argument (expecting BYTES)
+        # Assert we get a non-bytes argument (expecting BYTES)
         cmd_type = protocol.GEARMAN_COMMAND_JOB_CREATED
-        cmd_args = dict(job_handle=u'Let it \u2744')
+        cmd_args = dict(job_handle='Let it \u2744')
         self.assertRaises(ProtocolError, protocol.pack_binary_command, cmd_type, cmd_args)
 
     def test_packing_response(self):
@@ -152,7 +152,7 @@ class ProtocolBinaryCommandsTest(unittest.TestCase):
 
     def test_packing_single_arg(self):
         cmd_type = protocol.GEARMAN_COMMAND_ECHO_REQ
-        cmd_args = dict(data='abcde')
+        cmd_args = dict(data=b'abcde')
 
         expected_payload_size = len(cmd_args['data'])
         expected_format = '!4sII%ds' % expected_payload_size
@@ -163,8 +163,8 @@ class ProtocolBinaryCommandsTest(unittest.TestCase):
 
     def test_packing_encodable_unicode(self):
         cmd_type = protocol.GEARMAN_COMMAND_ECHO_REQ
-        string = 'abcde'
-        cmd_args = dict(data=u'%s' % string)
+        string = b'abcde'
+        cmd_args = dict(data=string)
 
         expected_payload_size = len(cmd_args['data'])
         expected_format = '!4sII%ds' % expected_payload_size
@@ -175,7 +175,7 @@ class ProtocolBinaryCommandsTest(unittest.TestCase):
 
     def test_packing_multiple_args(self):
         cmd_type = protocol.GEARMAN_COMMAND_SUBMIT_JOB
-        cmd_args = dict(task='function', unique='12345', data='abcd')
+        cmd_args = dict(task=b'function', unique=b'12345', data=b'abcd')
 
         ordered_parameters = [cmd_args['task'], cmd_args['unique'], cmd_args['data']]
 
@@ -192,26 +192,26 @@ class ProtocolTextCommandsTest(unittest.TestCase):
     # Begin parsing tests #
     #######################
     def test_parsing_errors(self):
-        received_data = "Hello\x00there\n"
+        received_data = b"Hello\x00there\n"
         self.assertRaises(ProtocolError, protocol.parse_text_command, received_data)
 
     def test_parsing_without_enough_data(self):
-        received_data = "Hello there"
+        received_data = b"Hello there"
         cmd_type, cmd_response, cmd_len = protocol.parse_text_command(received_data)
         self.assertEquals(cmd_type, None)
         self.assertEquals(cmd_response, None)
         self.assertEquals(cmd_len, 0)
 
     def test_parsing_single_line(self):
-        received_data = "Hello there\n"
+        received_data = b"Hello there\n"
         cmd_type, cmd_response, cmd_len = protocol.parse_text_command(received_data)
         self.assertEquals(cmd_type, protocol.GEARMAN_COMMAND_TEXT_COMMAND)
         self.assertEquals(cmd_response, dict(raw_text=received_data.strip()))
         self.assertEquals(cmd_len, len(received_data))
 
     def test_parsing_multi_line(self):
-        sentence_one = "Hello there\n"
-        sentence_two = "My name is bob\n"
+        sentence_one = b"Hello there\n"
+        sentence_two = b"My name is bob\n"
         received_data = sentence_one + sentence_two
 
         cmd_type, cmd_response, cmd_len = protocol.parse_text_command(received_data)
@@ -232,14 +232,14 @@ class ProtocolTextCommandsTest(unittest.TestCase):
 
         # Test misnamed parameter dict
         cmd_type = protocol.GEARMAN_COMMAND_TEXT_COMMAND
-        cmd_args = dict(bad_text='abcdefghij')
+        cmd_args = dict(bad_text=b'abcdefghij')
         self.assertRaises(ProtocolError, protocol.pack_text_command, cmd_type, cmd_args)
 
     #######################
     # Begin packing tests #
     #######################
     def test_packing_single_line(self):
-        expected_string = 'Hello world'
+        expected_string = b'Hello world'
         cmd_type = protocol.GEARMAN_COMMAND_TEXT_COMMAND
         cmd_args = dict(raw_text=expected_string)
 
@@ -266,8 +266,8 @@ class GearmanCommandHandlerTest(_GearmanAbstractTest):
         self.assert_sent_command(protocol.GEARMAN_COMMAND_NOOP)
 
         # The mock handler never implemented 'recv_all_yours' so we should get an attribute error here
-        self.command_handler.send_command(protocol.GEARMAN_COMMAND_ECHO_REQ, text='hello world')
-        self.assert_sent_command(protocol.GEARMAN_COMMAND_ECHO_REQ, text='hello world')
+        self.command_handler.send_command(protocol.GEARMAN_COMMAND_ECHO_REQ, text=b'hello world')
+        self.assert_sent_command(protocol.GEARMAN_COMMAND_ECHO_REQ, text=b'hello world')
 
     def assert_recv_command(self, expected_cmd_type, **expected_cmd_args):
         cmd_type, cmd_args = self.command_handler.recv_command_queue.popleft()

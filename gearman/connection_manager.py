@@ -6,7 +6,6 @@ from gearman.connection import GearmanConnection
 from gearman.constants import _DEBUG_MODE_
 from gearman.errors import ConnectionError, ServerUnavailable
 from gearman.job import GearmanJob, GearmanJobRequest
-from gearman import compat
 
 gearman_logger = logging.getLogger(__name__)
 
@@ -23,7 +22,7 @@ class NoopEncoder(DataEncoder):
     """Provide common object dumps for all communications over gearman"""
     @classmethod
     def _enforce_byte_string(cls, given_object):
-        if type(given_object) != str:
+        if type(given_object) != bytes:
             raise TypeError("Expecting byte string, got %r" % type(given_object))
 
     @classmethod
@@ -181,10 +180,11 @@ class GearmanConnectionManager(object):
     def poll_connections_until_stopped(self, submitted_connections, callback_fxn, timeout=None):
         """Continue to poll our connections until we receive a stopping condition"""
         stopwatch = gearman.util.Stopwatch(timeout)
+        submitted_connections = set(submitted_connections)
 
         any_activity = False
         callback_ok = callback_fxn(any_activity)
-        connection_ok = compat.any(current_connection.connected for current_connection in submitted_connections)
+        connection_ok = any(current_connection.connected for current_connection in submitted_connections)
 
         while connection_ok and callback_ok:
             time_remaining = stopwatch.get_time_remaining()
@@ -193,12 +193,17 @@ class GearmanConnectionManager(object):
 
             # Do a single robust select and handle all connection activity
             read_connections, write_connections, dead_connections = self.poll_connections_once(submitted_connections, timeout=time_remaining)
-            self.handle_connection_activity(read_connections, write_connections, dead_connections)
 
-            any_activity = compat.any([read_connections, write_connections, dead_connections])
+            # Handle reads and writes and close all of the dead connections
+            read_connections, write_connections, dead_connections = self.handle_connection_activity(read_connections, write_connections, dead_connections)
+
+            any_activity = any([read_connections, write_connections, dead_connections])
+
+            # Do not retry dead connections on the next iteration of the loop, as we closed them in handle_error
+            submitted_connections -= dead_connections
 
             callback_ok = callback_fxn(any_activity)
-            connection_ok = compat.any(current_connection.connected for current_connection in submitted_connections)
+            connection_ok = any(current_connection.connected for current_connection in submitted_connections)
 
         # We should raise here if we have no alive connections (don't go into a select polling loop with no connections)
         if not connection_ok:

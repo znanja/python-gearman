@@ -1,5 +1,5 @@
 import collections
-import cStringIO
+import io
 import logging
 import os
 import socket
@@ -54,8 +54,8 @@ class GearmanConnection(object):
         # Reset all our raw data buffers -- outgoing buffer must store data in
         # reverse to reduce the amount of manipulations for commands with
         # a large payload
-        self._incoming_buffer = cStringIO.StringIO()
-        self._outgoing_buffer = cStringIO.StringIO()
+        self._incoming_buffer = io.BytesIO()
+        self._outgoing_buffer = io.BytesIO()
 
         # Toss all commands we may have sent or received
         self._incoming_commands = collections.deque()
@@ -104,7 +104,7 @@ class GearmanConnection(object):
         try:
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client_socket.connect((self.gearman_host, self.gearman_port))
-        except socket.error, socket_exception:
+        except socket.error as socket_exception:
             self.throw_exception(exception=socket_exception)
 
         self.set_socket(client_socket)
@@ -143,7 +143,7 @@ class GearmanConnection(object):
 
             substr = incoming[cmd_len:]
             self._incoming_buffer.close()
-            self._incoming_buffer = cStringIO.StringIO()
+            self._incoming_buffer = io.BytesIO()
             self._incoming_buffer.write(substr)
 
         return received_commands
@@ -156,7 +156,7 @@ class GearmanConnection(object):
         recv_buffer = ''
         try:
             recv_buffer = self.gearman_socket.recv(bytes_to_read)
-        except socket.error, socket_exception:
+        except socket.error as socket_exception:
             self.throw_exception(exception=socket_exception)
 
         if len(recv_buffer) == 0:
@@ -178,7 +178,7 @@ class GearmanConnection(object):
             cmd_type = None
             cmd_args = None
             cmd_len = 0
-        elif given_buffer[0] == NULL_CHAR:
+        elif given_buffer[0] == 0:
             # We'll be expecting a response if we know we're a client side command
             is_response = bool(self._is_client_side)
             cmd_type, cmd_args, cmd_len = parse_binary_command(given_buffer, is_response=is_response)
@@ -199,7 +199,7 @@ class GearmanConnection(object):
         if not self._outgoing_commands:
             return
 
-        # Need to add commands to front of buffer but StringIO doesn't provide
+        # Need to add commands to front of buffer but BytesIO doesn't provide
         # a way to do so.  Unreverse the buffer, then append the command, then
         # reverse the buffer again.
         out_buffer = self._outgoing_buffer.getvalue()[::-1]
@@ -209,7 +209,7 @@ class GearmanConnection(object):
             packed_command = self._pack_command(cmd_type, cmd_args)
             out_buffer += packed_command
 
-        self._outgoing_buffer = cStringIO.StringIO()
+        self._outgoing_buffer = io.BytesIO()
         self._outgoing_buffer.write(out_buffer[::-1])
 
     def send_data_to_socket(self):
@@ -228,7 +228,7 @@ class GearmanConnection(object):
 
         try:
             bytes_sent = self.gearman_socket.send(output)
-        except socket.error, socket_exception:
+        except socket.error as socket_exception:
             self.throw_exception(exception=socket_exception)
 
         if bytes_sent == 0:
@@ -237,6 +237,7 @@ class GearmanConnection(object):
         # Pop bytes sent off of buffer
         new_size = self._outgoing_buffer.tell() - bytes_sent
         self._outgoing_buffer.truncate(new_size)
+        self._outgoing_buffer.seek(new_size)
 
         return new_size
 

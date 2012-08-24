@@ -1,11 +1,11 @@
 import struct
 from gearman.constants import PRIORITY_NONE, PRIORITY_LOW, PRIORITY_HIGH
 from gearman.errors import ProtocolError
-from gearman import compat
+
 # Protocol specific constants
-NULL_CHAR = '\x00'
-MAGIC_RES_STRING = '%sRES' % NULL_CHAR
-MAGIC_REQ_STRING = '%sREQ' % NULL_CHAR
+NULL_CHAR = b'\x00'
+MAGIC_RES_STRING = NULL_CHAR + b'RES'
+MAGIC_REQ_STRING = NULL_CHAR + b'REQ'
 
 COMMAND_HEADER_SIZE = 12
 
@@ -229,7 +229,7 @@ def parse_binary_command(in_buffer, is_response=True):
 
 def pack_binary_command(cmd_type, cmd_args, is_response=False):
     """Packs the given command using the parameter ordering specified in GEARMAN_PARAMS_FOR_COMMAND.
-    *NOTE* Expects that all arguments in cmd_args are already str's.
+    *NOTE* Expects that all arguments in cmd_args are already bytes.
     """
     expected_cmd_params = GEARMAN_PARAMS_FOR_COMMAND.get(cmd_type, None)
     if expected_cmd_params is None or cmd_type == GEARMAN_COMMAND_TEXT_COMMAND:
@@ -246,16 +246,12 @@ def pack_binary_command(cmd_type, cmd_args, is_response=False):
     else:
         magic = MAGIC_REQ_STRING
 
-    # !NOTE! str should be replaced with bytes in Python 3.x
     # The binary protocol is null byte delimited, so let's make sure we don't
     # have null bytes in our values and we're dealing with strings we can probably encode.
-    if compat.any(not isinstance(param_value, basestring) or '\0' in param_value for param_value in cmd_args.itervalues()):
+    if any(not isinstance(param_value, bytes) or NULL_CHAR in param_value for param_value in cmd_args.values()):
         raise ProtocolError('Received un-encodable arguments: %r' % cmd_args)
 
-    try:
-        data_items = [cmd_args[param].encode('ascii') for param in expected_cmd_params]
-    except:
-        raise ProtocolError('Received un-encodable arguments: %r' % cmd_args)
+    data_items = [cmd_args[param] for param in expected_cmd_params]
     binary_payload = NULL_CHAR.join(data_items)
 
     # Pack the header in the !4sII format then append the binary payload
@@ -268,10 +264,10 @@ def parse_text_command(in_buffer):
     cmd_type = None
     cmd_args = None
     cmd_len = 0
-    if '\n' not in in_buffer:
+    if b'\n' not in in_buffer:
         return cmd_type, cmd_args, cmd_len
 
-    text_command, in_buffer = in_buffer.split('\n', 1)
+    text_command, in_buffer = in_buffer.split(b'\n', 1)
     if NULL_CHAR in text_command:
         raise ProtocolError('Received unexpected character: %s' % text_command)
 
@@ -291,4 +287,4 @@ def pack_text_command(cmd_type, cmd_args):
     if cmd_line is None:
         raise ProtocolError('Did not receive arguments any valid arguments: %s' % cmd_args)
 
-    return str(cmd_line)
+    return bytes(cmd_line)

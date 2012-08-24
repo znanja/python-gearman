@@ -1,5 +1,5 @@
+import binascii
 import collections
-from gearman import compat
 import logging
 import os
 import random
@@ -30,7 +30,7 @@ class GearmanClient(GearmanConnectionManager):
 
         # The authoritative copy of all requests that this client knows about
         # Ignores the fact if a request has been bound to a connection or not
-        self.request_to_rotating_connection_queue = weakref.WeakKeyDictionary(compat.defaultdict(collections.deque))
+        self.request_to_rotating_connection_queue = weakref.WeakKeyDictionary(collections.defaultdict(collections.deque))
 
     def submit_job(self, task, data, unique=None, priority=PRIORITY_NONE, background=False, wait_until_complete=True, max_retries=0, poll_timeout=None):
         """Submit a single job to any gearman server"""
@@ -86,7 +86,7 @@ class GearmanClient(GearmanConnectionManager):
                 if current_request.state == JOB_UNKNOWN:
                     self.send_job_request(current_request)
 
-            return compat.any(is_request_pending(current_request) for current_request in job_requests)
+            return any(is_request_pending(current_request) for current_request in job_requests)
 
         self.poll_connections_until_stopped(self.connection_list, continue_while_jobs_pending, timeout=poll_timeout)
 
@@ -169,7 +169,7 @@ class GearmanClient(GearmanConnectionManager):
         # Make sure we have a unique identifier for ALL our tasks
         job_unique = job_info.get('unique')
         if not job_unique:
-            job_unique = os.urandom(self.random_unique_bytes).encode('hex')
+            job_unique = binascii.hexlify(os.urandom(self.random_unique_bytes))
 
         current_job = self.job_class(connection=None, handle=None, task=job_info['task'], unique=job_unique, data=job_info['data'])
 
